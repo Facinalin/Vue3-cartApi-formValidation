@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 下面這行：為了解決imgur回傳403 error的狀況：成功 -->
+    <meta name="referrer" content="no-referrer">
+    <title>Document</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6" crossorigin="anonymous">
+    <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.9.0/css/all.min.css'
+          integrity='sha512-q3eWabyZPc1XTCmF+8/LuE1ozpg5xxn7iO89yfSOd5/oKvyqLngoNGsx8jq92Y8eXJ/IRxQbEC+FGSYxtk2oiw=='
+          crossorigin='anonymous' />        
+  </head>
+
+  <body>
+    <div id="app">
+      <div class="container">
+        <div class="mt-4">
+          
+          <!-- 產品清單：初始載入 -->
+          <table class="table align-middle">
+            <thead>
+              <tr class="thead">
+                <th>圖片</th>
+                <th>商品名稱</th>
+                <th>價格</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="product in products">
+                <td style="width: 200px">
+                  <div style="height: 100px; background-size: cover; background-position: center">
+                  <img :src="product.imageUrl" alt="" class="productImg"></div>
+                </td>
+                <td>
+                  <h6>{{ product.title }}</h6>
+                </td>
+                <td>
+                  <div v-if="product.origin_price === product.price"></div>
+                  <div v-else>
+                  <del class="h6">原價 {{ product.origin_price }} 元</del>
+                  <div class="h5">特價 <span class="priceSpecial"> {{ product.price }} </span>元</div>
+                </div>
+                </td>
+                <td>
+                  <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" @click="openModal(product.id,product)">
+                      <i class="fas fa-spinner fa-pulse" v-if="loadingStatusModal.loadingItemModal === product.id"></i>
+                      查看更多
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" @click="addToCart(product.id)">
+                      <i class="fas fa-spinner fa-pulse" v-if="loadingStatus.loadingItem === product.id"></i>
+                      加到購物車
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- 產品細節：點擊觸發 -->
+          <div class="modal fade" id="productModal" tabindex="-1" role="dialog"
+         aria-labelledby="exampleModalLabel" aria-hidden="true" ref="modal">
+         <product-modal-component :per-product="tempProduct" :add-to-cart="addToCart"></product-modal-component>
+        </div>
+        <!-- 購物車：初始歸0，點擊觸發 -->
+       <cart-component :cart-product="cartProduct" :cart-total="cartTotal" :if-discount="ifDiscount" :set-cart-qty="setCartQty" :delete-per-cart="deletePerCart" :delete-all-cart="deleteAllCart" :loading-status="loadingStatus"></cart-component>
+       <order-info-component></order-info-component>
+      </div>
+      </div>
+    </div>
+
+    <style>
+      .productImg{
+        height: 100px;
+        width: 100px;
+        display: block;
+        object-fit: cover;
+      }
+
+      .priceSpecial{
+        color: #a31e1e;
+      }
+
+      .thead{
+        color: #0f0528;
+      }
+
+      .thead th{
+        padding: 12px 24px
+      }
+
+      .perProductPic{
+        height: 400px;
+        width: 400px;
+        display: block;
+        object-fit: cover;
+      }
+
+      p{
+        line-height: 1.5;
+      }
+    </style>
+
+<script type="module">
+//有些地方是否不適合拆元件：初始載入的axios.get
+//適合拆成元件：觸發後的功能
+import productModalComponent from './components/productModalComponent.js';
+import cartComponent from './components/cartComponent.js';
+import orderInfoComponent from './components/orderInfoComponent.js';
+
+const { createApp } = Vue;
+
+let productModal = null;
+
+const app = createApp({
+  data(){
+    return{
+      apiUrl: 'https://vue3-course-api.hexschool.io/v2',
+      apiPath: 'lk1025cina',
+      products:[],
+      tempProduct:{},
+      cart:[],
+      cartProduct:[],
+      cartTotal:0,
+      ifDiscount:false,
+      loadingStatus: {
+        loadingItem: '',
+      },
+      loadingStatusModal:{
+        loadingItemModal: '',
+      }
+    }
+  },
+  components:{
+    productModalComponent,
+    cartComponent,
+    orderInfoComponent
+  },
+  methods:{
+    getData(){
+            const url = `${this.apiUrl}/api/${this.apiPath}/products/all`;
+            axios.get(url).then((res)=>{
+                this.products = res.data.products;
+            })
+            .catch((err)=>{
+                console.log(err.data);
+            })
+            },
+    openModal(id,item){
+    this.loadingStatusModal.loadingItemModal = id;
+    productModal.show();
+    this.tempProduct = {...item};
+    this.loadingStatusModal.loadingItemModal = '';
+    },
+    closeModal(){
+    productModal.hide(); 
+    },
+    addToCart(curProductId, curQty = 1){
+           this.loadingStatus.loadingItem = curProductId;
+           let httpRequest = 'post';
+           ///v2/api/{api_path}/cart
+           let url = `${this.apiUrl}/api/${this.apiPath}/cart`;
+            //狀況一：購物車尚未已有該產品id，則在cart陣列中找到該產品id，數量增加一
+           const currentCart = this.cart.find(item => item.productId == curProductId);
+           if(currentCart){
+           httpRequest = 'put';
+           url = `${this.apiUrl}/api/${this.apiPath}/cart/${item.id}`;
+           currentCart.qty += curQty;
+           this.perCart = currentCart;
+           }else{
+            //狀況二：購物車尚未有該產品id，則新增資料進cart陣列
+           this.perCart = {
+            id:new Date().getTime(),
+            product_id:curProductId,
+            qty:curQty
+            }
+            }
+           axios[httpRequest](url,{ data: this.perCart })
+           .then(res=>{
+            alert('成功加入購物車！');
+            this.loadingStatus.loadingItem = '';
+            this.getCartData();
+            productModal.hide(); 
+           })
+           .catch(err=>{
+            console.log(err.data);
+           })
+           },
+    getCartData(){
+        //取得購物車get：/v2/api/{api_path}/cart
+        const url = `${this.apiUrl}/api/${this.apiPath}/cart`;
+        axios.get(url).then((res)=>{
+          //res.data.carts為一個陣列
+        this.cartProduct = res.data.data.carts;
+        const total = this.cartProduct.reduce((a,b)=> a + b.total, 0)
+        this.cartTotal = total;
+        })
+        .catch((err)=>{
+            console.log(err.data);
+        })
+        },
+    setCartQty(perCart, event){
+        const url = `${this.apiUrl}/api/${this.apiPath}/cart/${perCart.id}`;
+        const selectQty = event.target.value*1;
+        //更改的是該購物車的數量
+        this.perCart = perCart;
+        this.perCart.qty = selectQty;
+        axios.put(url,{ data: this.perCart })
+        .then(res=>{
+          this.getCartData();
+        })
+        .catch(err=>{
+          console.log(err);
+        })
+        },
+    deletePerCart(cartId){
+        this.loadingStatus.loadingItem = cartId;
+        const url = `${this.apiUrl}/api/${this.apiPath}/cart/${cartId}`;
+        axios.delete(url).then(res=>{
+          alert('成功刪除一筆購物車！');
+          this.loadingStatus.loadingItem = '';
+          this.getCartData();
+        })
+        .catch(err=>{
+          console.log(err);
+        })
+        },
+    deleteAllCart(){
+      const url = `${this.apiUrl}/api/${this.apiPath}/carts`;
+      axios.delete(url).then(res=>{
+        alert('你的購物車已清空！');
+        this.getCartData();
+      })
+      .catch(err=>{
+        console.log(err);
+      })
+     },
+  },
+  mounted(){
+    const token = document.cookie.replace(/(?:(?:^|.*;\s*)hexToken\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+    axios.defaults.headers.common.Authorization = token;
+    this.getData();
+    productModal = new bootstrap.Modal(document.getElementById('productModal'), {
+      keyboard: false,
+      backdrop: 'static'
+    });
+    this.getCartData();
+  }
+})
+
+app.component('VForm', VeeValidate.Form);
+app.component('VField', VeeValidate.Field);
+app.component('ErrorMessage', VeeValidate.ErrorMessage);
+
+VeeValidate.defineRule('email', VeeValidateRules['email']);
+VeeValidate.defineRule('required', VeeValidateRules['required']);
+VeeValidate.defineRule('min', VeeValidateRules['min']);
+VeeValidateI18n.loadLocaleFromURL('./zh_TW.json');
+
+app.mount('#app');
+
+    </script>
+
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/axios/0.9.1/axios.min.js'
+            integrity='sha512-Xk3wWei2TGrsh9kDSBKUMIjw/86sLUvhtnv9f7fOuIwhhiUTKz8szkWkzHthrM5Bb3Bu9idSzkxOrkzhcneuiw=='
+            crossorigin='anonymous'></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.1/dist/umd/popper.min.js"
+            integrity="sha384-SR1sx49pcuLnqZUnnPwx6FCym0wLsk5JZuNx2bPPENzswTNFaQU1RDvt3wT4gWFG"
+            crossorigin="anonymous">//popper.js是提示框popover的套件</script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.min.js"
+            integrity="sha384-j0CNLUeiqtyaRmlzUHCPZ+Gy5fQu0dQ6eZ/xAww941Ai1SxSY+0EQqNXNE6DZiVc"
+            crossorigin="anonymous"></script>
+            
+     <script src="https://unpkg.com/vue@next"></script>
+    <script src="https://unpkg.com/vee-validate@next"></script>
+    <script src="https://unpkg.com/@vee-validate/i18n@4.1.0"></script>
+    <script src="https://unpkg.com/@vee-validate/rules"></script>
+    <script src="./checkout.js" type="module"></script>
+  </body>
+
+</html>
